@@ -146,7 +146,11 @@ def call_llm_translation(sourashtra_input):
             if parsed:
                 return parsed, "Google Gemini (gemini-1.5-flash)"
         except Exception as e:
-            st.error(f"Gemini API error: {e}")
+            err_msg = str(e)
+            if "401" in err_msg or "authentication" in err_msg.lower():
+                st.error("❌ Invalid Gemini API Key format. Google Gemini API keys must start with `AIzaSy...`. Please generate a free key at https://aistudio.google.com/app/apikey")
+            else:
+                st.error(f"Gemini API Error: {err_msg}")
 
     # 3. Try OpenAI API
     if openai_key:
@@ -271,7 +275,10 @@ st.sidebar.markdown("### 🔑 API Key Status")
 if xai_k:
     st.sidebar.success("✅ xAI Grok Configured")
 elif gemini_k:
-    st.sidebar.success("✅ Google Gemini Configured")
+    if gemini_k.startswith("AIzaSy"):
+        st.sidebar.success("✅ Google Gemini Configured")
+    else:
+        st.sidebar.warning("⚠️ Invalid Gemini Key format (Must start with `AIzaSy...`)")
 elif openai_k:
     st.sidebar.success("✅ OpenAI Configured")
 else:
