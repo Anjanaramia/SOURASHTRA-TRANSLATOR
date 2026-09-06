@@ -74,10 +74,22 @@ def build_few_shot_context():
     return "\n".join(examples)
 
 def get_api_key(key_name):
-    # Check Streamlit secrets first, then environment variables
+    # Check Streamlit secrets first, then environment variables, then .env file
     if hasattr(st, "secrets") and key_name in st.secrets:
         return st.secrets[key_name]
-    return os.environ.get(key_name)
+    val = os.environ.get(key_name)
+    if val:
+        return val
+    env_path = os.path.join(BASE_DIR, ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith(f"{key_name}="):
+                        return line.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    return None
 
 
 # --- LLM Call Router ---

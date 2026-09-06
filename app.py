@@ -68,6 +68,21 @@ def build_few_shot_context():
     return "\n".join(examples)
 
 
+def get_api_key(key_name):
+    val = os.environ.get(key_name)
+    if val:
+        return val
+    env_path = os.path.join(BASE_DIR, ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith(f"{key_name}="):
+                        return line.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    return None
+
 # --- LLM API Integration (Grok / Gemini / OpenAI / Fallback) ---
 def call_llm_translation(sourashtra_input):
     context = build_few_shot_context()
@@ -84,9 +99,9 @@ def call_llm_translation(sourashtra_input):
         "Do NOT include markdown wrapping or extra prose."
     )
 
-    xai_key = os.environ.get("XAI_API_KEY")
-    gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    openai_key = os.environ.get("OPENAI_API_KEY")
+    xai_key = get_api_key("XAI_API_KEY")
+    gemini_key = get_api_key("GEMINI_API_KEY") or get_api_key("GOOGLE_API_KEY")
+    openai_key = get_api_key("OPENAI_API_KEY")
 
     # 1. Try xAI Grok API
     if xai_key:
