@@ -83,6 +83,38 @@ def get_api_key(key_name):
             pass
     return None
 
+def call_gemini_raw(gemini_key, full_prompt):
+    import requests
+    if gemini_key.startswith("AQ") or gemini_key.startswith("ya29"):
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        headers = {
+            "Authorization": f"Bearer {gemini_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+        res = requests.post(url, headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            raise Exception(f"Google Cloud OAuth Token Error ({res.status_code}): {res.text}")
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+        res = requests.post(url, headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        raise e
+
 # --- LLM API Integration (Grok / Gemini / OpenAI / Fallback) ---
 def call_llm_translation(sourashtra_input):
     context = build_few_shot_context()
@@ -124,16 +156,11 @@ def call_llm_translation(sourashtra_input):
             print(f"Grok API error: {e}")
 
     # 2. Try Gemini API
-    if gemini_key:
+    if gemini_key and not gemini_key.endswith("_YOUR_API_KEY_HERE"):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(
-                f"{system_prompt}\n\nSourashtra input: {sourashtra_input}"
-            )
-            raw = response.text.strip()
-            parsed = parse_json_response(raw)
+            full_p = f"{system_prompt}\n\nSourashtra input: {sourashtra_input}"
+            raw_text = call_gemini_raw(gemini_key, full_p)
+            parsed = parse_json_response(raw_text)
             if parsed:
                 return parsed, "Google Gemini (gemini-1.5-flash)"
         except Exception as e:

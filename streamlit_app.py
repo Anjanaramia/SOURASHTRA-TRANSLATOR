@@ -92,6 +92,42 @@ def get_api_key(key_name):
     return None
 
 
+def call_gemini_raw(gemini_key, full_prompt):
+    import requests
+    
+    # 1. Google Cloud OAuth Bearer Token (starts with AQ... or ya29...)
+    if gemini_key.startswith("AQ") or gemini_key.startswith("ya29"):
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        headers = {
+            "Authorization": f"Bearer {gemini_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+        res = requests.post(url, headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            raise Exception(f"Google Cloud OAuth Token Error ({res.status_code}): {res.text}")
+
+    # 2. Standard Gemini API Key (starts with AIzaSy...)
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+        res = requests.post(url, headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        raise e
+
+
 # --- LLM Call Router ---
 def call_llm_translation(sourashtra_input):
     context = build_few_shot_context()
@@ -132,25 +168,16 @@ def call_llm_translation(sourashtra_input):
         except Exception as e:
             st.error(f"Grok API error: {e}")
 
-    # 2. Try Gemini API
-    if gemini_key:
+    # 2. Try Gemini API (Supports AIzaSy... and AQ... keys)
+    if gemini_key and not gemini_key.endswith("_YOUR_API_KEY_HERE"):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(
-                f"{system_prompt}\n\nSourashtra input: {sourashtra_input}"
-            )
-            raw = response.text.strip()
-            parsed = parse_json_response(raw)
+            full_p = f"{system_prompt}\n\nSourashtra input: {sourashtra_input}"
+            raw_text = call_gemini_raw(gemini_key, full_p)
+            parsed = parse_json_response(raw_text)
             if parsed:
                 return parsed, "Google Gemini (gemini-1.5-flash)"
         except Exception as e:
-            err_msg = str(e)
-            if "401" in err_msg or "authentication" in err_msg.lower():
-                st.error("❌ Invalid Gemini API Key format. Google Gemini API keys must start with `AIzaSy...`. Please generate a free key at https://aistudio.google.com/app/apikey")
-            else:
-                st.error(f"Gemini API Error: {err_msg}")
+            st.error(f"Gemini API Error: {e}")
 
     # 3. Try OpenAI API
     if openai_key:
@@ -274,11 +301,11 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 🔑 API Key Status")
 if xai_k:
     st.sidebar.success("✅ xAI Grok Configured")
-elif gemini_k:
-    if gemini_k.startswith("AIzaSy"):
+elif gemini_k and not gemini_k.endswith("_YOUR_API_KEY_HERE"):
+    if gemini_k.startswith("AIzaSy") or gemini_k.startswith("AQ") or gemini_k.startswith("ya29"):
         st.sidebar.success("✅ Google Gemini Configured")
     else:
-        st.sidebar.warning("⚠️ Invalid Gemini Key format (Must start with `AIzaSy...`)")
+        st.sidebar.warning("⚠️ Unexpected Gemini Key format")
 elif openai_k:
     st.sidebar.success("✅ OpenAI Configured")
 else:
